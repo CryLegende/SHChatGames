@@ -1,0 +1,24 @@
+name: SHChatGames
+version: '${project.version}'
+main: org.Cry_Legende.sHChatGames.SHChatGames
+api-version: '1.20'
+author: Cry_Legende
+depend: [PlaceholderAPI]
+
+commands:
+  shchatgames:
+    description: Commande principale pour SHChatGames.
+    permission: shchatgames.reload
+    usage: /shchatgames reload
+  shcgclick:
+    description: Commande interne declenchee par le clic sur la case.
+    permission: shchatgames.play
+    usage: /shcgclick <token>
+
+permissions:
+  shchatgames.reload:
+    description: Permet de recharger la configuration de SHChatGames.
+    default: op
+  shchatgames.play:
+    description: Permet de participer au mini-jeu du clic.
+    default: true

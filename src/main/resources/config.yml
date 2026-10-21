@@ -1,0 +1,118 @@
+interval: "480-700"
+min-players: 10 #18
+
+enabled_games:
+  - type
+  - unreverse
+  - solve
+  - sequence
+  - click
+
+game_start_sound: "BLOCK_NOTE_BLOCK_PLING"
+game_win_sound: "ENTITY_PLAYER_LEVELUP"
+
+games:
+  type:
+    start:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &fLe premier qui écrit &d&l%GAME_CONTENT% &fgagne !"
+      - ""
+    win:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &a%PLAYER%&f a écrit &b&l%ANSWER% &fen &d%TIME% &fsec !"
+      - ""
+    timeout:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &eTemps écoulé&f, Personne n'a gagné !"
+      - ""
+
+  unreverse:
+    start:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &fLe premier qui retourne &d&l%GAME_CONTENT% &fgagne !"
+      - ""
+    win:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - "&a%PLAYER%&f a retourné &b&l%ANSWER% &fen &d%TIME% &fsec !"
+      - ""
+    timeout:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - "&eTemps écoulé&f, Personne n'a gagné !"
+      - ""
+
+  solve:
+    start:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - "&fLe premier qui résout &d&l%GAME_CONTENT% &fgagne !"
+      - ""
+    win:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &a%PLAYER%&f a résolu &b&l%ANSWER% &fen &d%TIME% &fsec !"
+      - ""
+    timeout:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &eTemps écoulé&f, Personne n'a gagné !"
+      - ""
+  
+  sequence:
+    start:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &fTrouvez la suite logique : &d&l%GAME_CONTENT%"
+      - ""
+    win:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &a%PLAYER%&f a trouvé la suite &b&l%ANSWER% &fen &d%TIME% &fsec !"
+      - ""
+    timeout:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &eTemps écoulé&f, la réponse était &b%ANSWER% !"
+      - ""
+
+  click:
+    # Symboles possibles pour la case (tires au hasard).
+    # Attention : n'utilisez que des caracteres Unicode BMP (les emojis type 🔲 ne s'affichent PAS dans Minecraft).
+    symbols:
+      # - "&f&l[ &e&l⬜&f&l ]"
+      - "&f&l[ &b&l⬛&f&l ]"
+      # - "&f&l[ &d&l▣&f&l ]"
+      # - "&f&l[ &a&l◼&f&l ]"
+    hover: "&aCliquez ici pour gagner !"
+    start:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &fLe premier qui clique sur %GAME_CONTENT% &fgagne !"
+      - ""
+    win:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &a%PLAYER%&f a cliqué sur &b&l%ANSWER% &fen &d%TIME% &fsec !"
+      - ""
+    timeout:
+      - ""
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
+      - " &eTemps écoulé&f, Personne n'a cliqué !"
+      - ""
+    too_late:
+      - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l» &cTrop tard !"
+
+rewards:
+  1:
+    - "minecraft:xp add %player% 250"
+    - "eco give %player% 3000"
+    - "sm %player% &7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l» &fVous avez gagné &a250 EXP &fet &a3000 SHCoins"
+  2:
+    - "shwc %player% ntdluckyblock give %player% YELLOW 1"
+    - "eco give %player% 3000"
+    - "sm %player% &7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l» &fVous avez gagné &a1 luckyblock Jaune &fet &a3000 SHCoins"
