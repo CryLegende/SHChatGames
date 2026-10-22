@@ -4,7 +4,7 @@
 
 # SHChatGames
 
-*Plugin du serveur SkyHand.*
+*Mini-jeux de chat automatiques (mot à taper, mot à l'envers, calcul, suite, clic) avec récompenses.*
 
 <img src="https://img.shields.io/badge/Paper-26.3-f2a900?style=for-the-badge" alt="Paper 26.3"> <img src="https://img.shields.io/badge/Java-25-e76f00?style=for-the-badge" alt="Java 25"> <img src="https://img.shields.io/badge/SkyHand-Opale-3aa655?style=for-the-badge" alt="SkyHand Opale">
 
@@ -14,7 +14,7 @@
 
 ## Présentation
 
-Plugin du serveur SkyHand.
+Mini-jeux de chat automatiques (mot à taper, mot à l'envers, calcul, suite, clic) avec récompenses.
 
 Utilisé sur : **Opale**.
 
@@ -38,10 +38,13 @@ Utilisé sur : **Opale**.
 
 ## Configuration
 
-Fichiers par défaut repris du serveur (secrets remplacés par `CHANGE_ME`) :
+Fichiers par défaut repris du serveur (secrets remplacés par `CHANGE_ME`). Cliquez sur un fichier pour l'ouvrir :
 
-- `config.yml`
-- `words.yml`
+<pre>
+plugins/SHChatGames/
+├── <a href="src/main/resources/config.yml">config.yml</a>
+└── <a href="src/main/resources/words.yml">words.yml</a>
+</pre>
 
 ## Compilation
 
