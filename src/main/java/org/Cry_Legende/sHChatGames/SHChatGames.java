@@ -1,13 +1,14 @@
 package org.Cry_Legende.sHChatGames;
 
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
-import net.md_5.bungee.api.chat.BaseComponent;
-import net.md_5.bungee.api.chat.ClickEvent;
-import net.md_5.bungee.api.chat.HoverEvent;
-import net.md_5.bungee.api.chat.TextComponent;
-import net.md_5.bungee.api.chat.hover.content.Text;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.Sound;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -24,18 +25,26 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 
 public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
     private FileConfiguration config;
     private List<String> words;
     private final Random random = new Random();
-    private Game currentGame = null;
-    private long startTime;
+    // Lu par le thread de chat (asynchrone) et écrit par le thread principal
+    private volatile Game currentGame = null;
     private BukkitTask timeoutTask;
 
     private File winsFile;
     private FileConfiguration winsConfig;
+    // winsConfig est lu/écrit par le chat (async), les clics (principal) et PlaceholderAPI : tout passe par ce verrou
+    private final Object winsLock = new Object();
+    private final Object winsFileLock = new Object();
+    private long winsSeq;
+    private long winsWrittenSeq;
 
     @Override
     public void onEnable() {
@@ -66,36 +75,79 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         winsConfig = YamlConfiguration.loadConfiguration(winsFile);
     }
 
+    /** Écriture synchrone (arrêt du plugin). */
     private void saveWins() {
-        try {
-            winsConfig.save(winsFile);
-        } catch (IOException e) {
-            getLogger().warning("Impossible de sauvegarder wins.yml: " + e.getMessage());
+        String data;
+        long seq;
+        synchronized (winsLock) {
+            data = winsConfig.saveToString();
+            seq = ++winsSeq;
+        }
+        writeWins(data, seq);
+    }
+
+    /** L'instantané est pris sous le verrou, l'écriture du fichier part hors du thread appelant. */
+    private void saveWinsAsync() {
+        String data;
+        long seq;
+        synchronized (winsLock) {
+            data = winsConfig.saveToString();
+            seq = ++winsSeq;
+        }
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> writeWins(data, seq));
+    }
+
+    private void writeWins(String data, long seq) {
+        synchronized (winsFileLock) {
+            if (seq < winsWrittenSeq) return; // un instantané plus récent a déjà été écrit
+            // Fichier temporaire puis remplacement : un arrêt en plein milieu ne tronque pas wins.yml
+            File tmp = new File(winsFile.getParentFile(), winsFile.getName() + ".tmp");
+            try {
+                Files.writeString(tmp.toPath(), data, StandardCharsets.UTF_8);
+                Files.move(tmp.toPath(), winsFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                winsWrittenSeq = seq;
+            } catch (IOException e) {
+                getLogger().warning("Impossible de sauvegarder wins.yml: " + e.getMessage());
+            }
         }
     }
 
     int incrementWins(String player) {
-        int wins = winsConfig.getInt(player, 0) + 1;
-        winsConfig.set(player, wins);
-        saveWins();
+        int wins;
+        synchronized (winsLock) {
+            wins = winsConfig.getInt(player, 0) + 1;
+            winsConfig.set(player, wins);
+        }
+        saveWinsAsync();
         return wins;
     }
 
     int getWins(String player) {
-        return winsConfig.getInt(player, 0);
+        synchronized (winsLock) {
+            return winsConfig.getInt(player, 0);
+        }
     }
 
     private void scheduleNext() {
         String intervalStr = config.getString("interval", "300-300").trim();
         int delaySec;
-        if (intervalStr.contains("-")) {
-            String[] p = intervalStr.split("-");
-            int min = Integer.parseInt(p[0].trim());
-            int max = Integer.parseInt(p[1].trim());
-            delaySec = random.nextInt(max - min + 1) + min;
-        } else {
-            delaySec = Integer.parseInt(intervalStr);
+        try {
+            if (intervalStr.contains("-")) {
+                String[] p = intervalStr.split("-");
+                int a = Integer.parseInt(p[0].trim());
+                int b = Integer.parseInt(p[1].trim());
+                int min = Math.min(a, b);
+                int max = Math.max(a, b);
+                delaySec = random.nextInt(max - min + 1) + min;
+            } else {
+                delaySec = Integer.parseInt(intervalStr);
+            }
+        } catch (RuntimeException e) {
+            // Un « interval » illisible ne doit pas arrêter définitivement les jeux
+            getLogger().warning("Valeur 'interval' invalide (" + intervalStr + "), 300 s utilisées.");
+            delaySec = 300;
         }
+        delaySec = Math.max(1, delaySec);
         Bukkit.getScheduler().runTaskLater(this, () -> {
             startRandomGame();
             scheduleNext();
@@ -127,9 +179,11 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         switch (type) {
             case "type":
                 answer = content = getRandomWord();
+                if (content.isEmpty()) return; // aucun mot chargé : partie impossible à gagner
                 break;
             case "unreverse":
                 String w = getRandomWord();
+                if (w.isEmpty()) return;
                 content = new StringBuilder(w).reverse().toString();
                 answer = w;
                 break;
@@ -184,8 +238,8 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
                 return;
         }
 
-        currentGame = new Game(type, content, answer);
-        startTime = System.currentTimeMillis();
+        final Game game = new Game(type, content, answer, System.currentTimeMillis());
+        currentGame = game;
         if (timeoutTask != null) timeoutTask.cancel();
 
         // On crée une copie finale pour le scheduler
@@ -193,12 +247,12 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         final String finalAnswer = type.equals("click") ? content : answer;
 
         timeoutTask = Bukkit.getScheduler().runTaskLater(this, () -> {
-            if (currentGame != null && currentGame.type.equals(type)) {
+            // claimGame : si un joueur vient de gagner, le délai écoulé ne s'annonce pas en plus
+            if (claimGame(game)) {
                 broadcast("games." + type + ".timeout", Map.of(
                     "%GAME_CONTENT%", content,
                     "%ANSWER%", finalAnswer
                 ));
-                currentGame = null;
             }
         }, 60 * 20L);
 
@@ -238,7 +292,7 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
 
     private void handleWin(Player winner, Game game) {
         String player = winner.getName();
-        double dt = (System.currentTimeMillis() - startTime) / 1000.0;
+        double dt = (System.currentTimeMillis() - game.startTime) / 1000.0;
         String timeStr = String.format(Locale.ROOT, "%.2f", dt);
         int wins = incrementWins(player);
         // Pour "click", game.answer est un jeton interne : on affiche le symbole à la place.
@@ -286,17 +340,15 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
             String before = colored.substring(0, idx);
             String after = colored.substring(idx + "%GAME_CONTENT%".length());
 
-            TextComponent msg = new TextComponent();
-            for (BaseComponent c : TextComponent.fromLegacyText(before)) msg.addExtra(c);
-
-            TextComponent button = new TextComponent(TextComponent.fromLegacyText(coloredSymbol));
-            button.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/shcgclick " + token));
-            button.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                new Text(TextComponent.fromLegacyText(hover))));
-            msg.addExtra(button);
-
-            for (BaseComponent c : TextComponent.fromLegacyText(after)) msg.addExtra(c);
-            Bukkit.spigot().broadcast(msg);
+            LegacyComponentSerializer legacy = LegacyComponentSerializer.legacySection();
+            Component button = legacy.deserialize(coloredSymbol)
+                .clickEvent(ClickEvent.runCommand("/shcgclick " + token))
+                .hoverEvent(HoverEvent.showText(legacy.deserialize(hover)));
+            // Racine vide : le style de « before » ne déborde pas sur le bouton ni sur « after »
+            Bukkit.broadcast(Component.empty()
+                .append(legacy.deserialize(before))
+                .append(button)
+                .append(legacy.deserialize(after)));
         }
     }
 
@@ -323,10 +375,23 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
 
     private void playSound(String soundName) {
         if (soundName == null || soundName.isBlank()) return;
+        Sound sound = sound(soundName);
+        if (sound == null) return;
+        for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), sound, 1f, 1f);
+    }
+
+    /** Son lu en config : ancien nom (ENTITY_PLAYER_LEVELUP) ou clé (minecraft:entity.player.levelup). */
+    static Sound sound(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String s = raw.trim();
+        if (s.indexOf(':') >= 0 || s.indexOf('.') >= 0) {
+            NamespacedKey key = NamespacedKey.fromString(s.toLowerCase(Locale.ROOT));
+            return key == null ? null : Registry.SOUND_EVENT.get(key);
+        }
         try {
-            Sound sound = Sound.valueOf(soundName.toUpperCase(Locale.ROOT));
-            for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), sound, 1f, 1f);
-        } catch (IllegalArgumentException ignored) {
+            return (Sound) Sound.class.getField(s.toUpperCase(Locale.ROOT)).get(null);
+        } catch (ReflectiveOperationException | ClassCastException e) {
+            return null;
         }
     }
 
@@ -366,11 +431,13 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
 
     private static class Game {
         final String type, content, answer;
+        final long startTime;
 
-        Game(String t, String c, String a) {
+        Game(String t, String c, String a, long s) {
             type = t;
             content = c;
             answer = a;
+            startTime = s;
         }
     }
 
