@@ -21,6 +21,11 @@ Utilisé sur : **Opale**.
 ## Dépendances
 
 - Obligatoires : `PlaceholderAPI`
+- Optionnelles : `SHLogs`
+
+## Logs
+
+Chaque gagnant récompensé est écrit dans le fichier `gagnants` de SHLogs, avec le nom du jeu et la récompense reçue. Le texte de la ligne se règle avec `win_log_format`, le nom des jeux avec `log_name` et celui des récompenses avec `reward_log_names`. Sans SHLogs, la ligne est écrite dans la console.
 
 ## Commandes
 
@@ -43,6 +48,7 @@ Fichiers par défaut repris du serveur (secrets remplacés par `CHANGE_ME`). Cli
 <pre>
 plugins/SHChatGames/
 ├── <a href="src/main/resources/config.yml">config.yml</a>
+├── <a href="src/main/resources/messages.yml">messages.yml</a>
 └── <a href="src/main/resources/words.yml">words.yml</a>
 </pre>
 

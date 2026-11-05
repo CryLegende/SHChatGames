@@ -1,0 +1,14 @@
+# ======================================================================== #
+#                        SHChatGames - Messages                            #
+# ======================================================================== #
+#
+# Messages des commandes. Les codes couleur utilisent '&'.
+# Les textes des jeux (annonce, victoire, temps écoulé) sont dans 'config.yml'.
+#
+# ======================================================================== #
+
+# Commande refusée faute de permission.
+no_permission: "&7&l« &c&lSH &8&l» &7Vous n'avez pas la &cpermission&7 d'utiliser cette commande."
+
+# Configuration rechargée avec /shchatgames reload.
+reload_success: "&7&l« &a&lSH &8&l» &7Configuration &arechargée&7 avec succès !"

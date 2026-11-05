@@ -1,6 +1,29 @@
-interval: "480-700"
-min-players: 10 #18
+# ======================================================================== #
+#                      SHChatGames - Configuration                         #
+# ======================================================================== #
+#
+# Plugin : mini-jeux de chat automatiques (mot à taper, mot à l'envers,
+# calcul, suite, clic) avec récompenses.
+#
+# Commandes :
+#   /shchatgames reload   Recharge la configuration, les messages et la liste de mots.
+#   /shcgclick <jeton>    Commande interne exécutée par le clic sur la case du jeu « clic ».
+#
+# Permissions :
+#   shchatgames.reload    Recharger le plugin (par défaut : op).
+#   shchatgames.play      Participer au jeu du clic (par défaut : tous les joueurs).
+#
+# Les messages des commandes sont dans 'messages.yml'.
+#
+# ======================================================================== #
 
+# Délai entre deux jeux, en secondes : une valeur fixe (300) ou une plage (480-700).
+interval: "480-700"
+
+# Nombre minimal de joueurs connectés pour lancer un jeu.
+min-players: 10
+
+# Jeux tirés au hasard : type, unreverse, solve, sequence, click.
 enabled_games:
   - type
   - unreverse
@@ -8,11 +31,28 @@ enabled_games:
   - sequence
   - click
 
+
+# Durée d'un jeu, en secondes, avant la fin sans gagnant.
+game_timeout_seconds: 60
+
+# Son joué à tous les joueurs au lancement d'un jeu (vide pour aucun son).
 game_start_sound: "BLOCK_NOTE_BLOCK_PLING"
+
+# Son joué à tous les joueurs quand un joueur gagne (vide pour aucun son).
 game_win_sound: "ENTITY_PLAYER_LEVELUP"
 
+# Fichier SHLogs où sont écrits les gagnants.
+log_file: "gagnants"
+
+# Ligne écrite dans SHLogs pour chaque gagnant récompensé.
+# Variables : %PLAYER%, %GAME% (log_name du jeu), %REWARD% (reward_log_names du groupe tiré).
+win_log_format: "%PLAYER% -> gagne le jeu du chat « %GAME% » (%REWARD%)"
+
+# Textes de chaque jeu (start, win, timeout) et nom du jeu dans SHLogs (log_name).
+# Variables : %PLAYER%, %ANSWER%, %GAME_CONTENT%, %TIME%, %WINS%.
 games:
   type:
+    log_name: "Mot à taper"
     start:
       - ""
       - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
@@ -30,6 +70,7 @@ games:
       - ""
 
   unreverse:
+    log_name: "Mot à l'envers"
     start:
       - ""
       - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
@@ -47,6 +88,7 @@ games:
       - ""
 
   solve:
+    log_name: "Calcul"
     start:
       - ""
       - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
@@ -64,6 +106,7 @@ games:
       - ""
   
   sequence:
+    log_name: "Suite logique"
     start:
       - ""
       - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l»"
@@ -81,6 +124,7 @@ games:
       - ""
 
   click:
+    log_name: "Clic"
     # Symboles possibles pour la case (tires au hasard).
     # Attention : n'utilisez que des caracteres Unicode BMP (les emojis type 🔲 ne s'affichent PAS dans Minecraft).
     symbols:
@@ -107,6 +151,8 @@ games:
     too_late:
       - "&7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l» &cTrop tard !"
 
+# Récompenses : un groupe est tiré au hasard à chaque victoire, ses commandes sont
+# exécutées par la console. %PLAYER% = gagnant.
 rewards:
   1:
     - "minecraft:xp add %player% 250"
@@ -116,3 +162,8 @@ rewards:
     - "shwc %player% ntdluckyblock give %player% YELLOW 1"
     - "eco give %player% 3000"
     - "sm %player% &7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l» &fVous avez gagné &a1 luckyblock Jaune &fet &a3000 SHCoins"
+
+# Texte de chaque groupe de récompenses dans SHLogs (même numéro que ci-dessus).
+reward_log_names:
+  1: "250 EXP et 3000 SHCoins"
+  2: "1 luckyblock Jaune et 3000 SHCoins"

@@ -5,6 +5,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.Cry_Legende.sHChatGames.utils.ActionLog;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.NamespacedKey;
@@ -32,6 +33,7 @@ import java.util.*;
 
 public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
     private FileConfiguration config;
+    private FileConfiguration messages;
     private List<String> words;
     private final Random random = new Random();
     // Lu par le thread de chat (asynchrone) et écrit par le thread principal
@@ -50,6 +52,7 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
     public void onEnable() {
         saveDefaultConfig();
         config = getConfig();
+        loadMessages();
         loadWords();
         loadWins();
         getServer().getPluginManager().registerEvents(this, this);
@@ -67,6 +70,16 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
     public void onDisable() {
         if (timeoutTask != null) timeoutTask.cancel();
         saveWins();
+    }
+
+    private void loadMessages() {
+        File file = new File(getDataFolder(), "messages.yml");
+        if (!file.exists()) saveResource("messages.yml", false);
+        messages = YamlConfiguration.loadConfiguration(file);
+    }
+
+    private String message(String key, String def) {
+        return ChatColor.translateAlternateColorCodes('&', messages.getString(key, def));
     }
 
     private void loadWins() {
@@ -254,7 +267,7 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
                     "%ANSWER%", finalAnswer
                 ));
             }
-        }, 60 * 20L);
+        }, Math.max(1, config.getInt("game_timeout_seconds", 60)) * 20L);
 
         if (type.equals("click")) {
             broadcastClickable("games.click.start", content, answer);
@@ -308,7 +321,7 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         Bukkit.getScheduler().runTask(this, () -> {
             broadcast("games." + game.type + ".win", vars);
             playSound(config.getString("game_win_sound", ""));
-            runRewards(winner);
+            runRewards(winner, game.type);
         });
     }
 
@@ -395,17 +408,32 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         }
     }
 
-    private void runRewards(Player player) {
+    private void runRewards(Player player, String gameType) {
         var section = config.getConfigurationSection("rewards");
         if (section == null) return;
-        List<List<String>> all = new ArrayList<>();
-        for (String key : section.getKeys(false)) all.add(config.getStringList("rewards." + key));
-        if (all.isEmpty()) return;
-        List<String> chosen = all.get(random.nextInt(all.size()));
-        Bukkit.getScheduler().runTask(this, () -> chosen.forEach(cmd ->
-            getServer().dispatchCommand(getServer().getConsoleSender(),
-                cmd.replace("%PLAYER%", player.getName()).replace("%player%", player.getName())
-            )));
+        List<String> keys = new ArrayList<>(section.getKeys(false));
+        if (keys.isEmpty()) return;
+        String rewardKey = keys.get(random.nextInt(keys.size()));
+        List<String> chosen = config.getStringList("rewards." + rewardKey);
+        Bukkit.getScheduler().runTask(this, () -> {
+            boolean given = false;
+            for (String cmd : chosen) {
+                if (getServer().dispatchCommand(getServer().getConsoleSender(),
+                        cmd.replace("%PLAYER%", player.getName()).replace("%player%", player.getName()))) {
+                    given = true;
+                }
+            }
+            if (given) logWin(player, gameType, rewardKey);
+        });
+    }
+
+    /** Une ligne SHLogs par gagnant, écrite une fois ses commandes de récompense acceptées. */
+    private void logWin(Player player, String gameType, String rewardKey) {
+        String line = config.getString("win_log_format", "%PLAYER% -> gagne le jeu du chat « %GAME% » (%REWARD%)")
+            .replace("%PLAYER%", player.getName())
+            .replace("%GAME%", config.getString("games." + gameType + ".log_name", gameType))
+            .replace("%REWARD%", config.getString("reward_log_names." + rewardKey, "récompense " + rewardKey));
+        ActionLog.write(this, config.getString("log_file", "gagnants"), line);
     }
 
     private String getRandomWord() {
@@ -419,13 +447,16 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
             return true;
         }
         if (!s.hasPermission("shchatgames.reload")) {
-            s.sendMessage(ChatColor.RED + "Permission refusée.");
+            s.sendMessage(message("no_permission",
+                "&7&l« &c&lSH &8&l» &7Vous n'avez pas la &cpermission&7 d'utiliser cette commande."));
             return true;
         }
         reloadConfig();
         config = getConfig();
+        loadMessages();
         loadWords();
-        s.sendMessage(ChatColor.GREEN + "Configuration rechargée !");
+        s.sendMessage(message("reload_success",
+            "&7&l« &a&lSH &8&l» &7Configuration &arechargée&7 avec succès !"));
         return true;
     }
 

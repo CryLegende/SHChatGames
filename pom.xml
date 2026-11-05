@@ -91,5 +91,11 @@
             <version>2.11.6</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.Cry_Legende</groupId>
+            <artifactId>SHLogs</artifactId>
+            <version>2.0</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 </project>
