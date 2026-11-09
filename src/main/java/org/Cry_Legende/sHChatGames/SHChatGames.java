@@ -5,6 +5,9 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.Cry_Legende.sHChatGames.network.NetBus;
+import org.Cry_Legende.sHChatGames.network.ShNetworkBus;
+import org.Cry_Legende.sHChatGames.network.WinsDatabase;
 import org.Cry_Legende.sHChatGames.utils.ActionLog;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -26,19 +29,39 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.logging.Level;
 
 public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
-    private FileConfiguration config;
+    // Lue aussi par le fil du bus et les fils asynchrones : remplacée en entier à chaque rechargement
+    private volatile FileConfiguration config;
     private FileConfiguration messages;
     private List<String> words;
     private final Random random = new Random();
     // Lu par le thread de chat (asynchrone) et écrit par le thread principal
     private volatile Game currentGame = null;
     private BukkitTask timeoutTask;
+    private BukkitTask scheduleTask;
+    // Non nul seulement avec SHNetwork : un seul jeu pour tout le réseau, victoires en base
+    private NetworkGames net;
+
+    private static final Set<String> GAME_TYPES = new LinkedHashSet<>(List.of("type", "unreverse", "solve", "sequence", "click"));
+
+    /** Résultat d'une tentative de lancement. */
+    private enum Start { STARTED, TOO_FEW_PLAYERS, NO_GAME_ENABLED, NOT_PLAYABLE, NOT_LEADER, BUSY, UNKNOWN_TYPE }
+
+    /** Énoncé d'un jeu : ce qui est affiché et ce qui est attendu. */
+    private record Puzzle(String type, String content, String answer) {
+    }
+
+    /** Groupe de récompenses tiré au sort : sa clé dans config.yml et ses commandes. */
+    record Reward(String key, List<String> commands) {
+    }
 
     private File winsFile;
     private FileConfiguration winsConfig;
@@ -63,23 +86,87 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
             new ShChatGamesExpansion(this).register();
         }
-        scheduleNext();
+        enableNetwork();
+        // Avec SHNetwork, seul le meneur planifie les jeux : le planificateur démarre quand il est désigné
+        if (net == null) scheduleNext();
     }
 
     @Override
     public void onDisable() {
         if (timeoutTask != null) timeoutTask.cancel();
-        saveWins();
+        if (net != null) {
+            net.disable();
+        } else {
+            saveWins();
+        }
+    }
+
+    /**
+     * Passe en mode réseau si SHNetwork est installé et 'reseau.actif' est vrai. Les classes qui touchent à SHNetwork
+     * ne sont résolues qu'ici : sans lui, rien n'est chargé et le plugin garde son fonctionnement d'origine.
+     */
+    private void enableNetwork() {
+        if (!config.getBoolean("reseau.actif", true)) return;
+        if (!Bukkit.getPluginManager().isPluginEnabled("SHNetwork")) return;
+        WinsDatabase db = null;
+        try {
+            NetBus bus = ShNetworkBus.open();
+            db = new WinsDatabase(
+                config.getString("reseau.base-de-donnees.url"),
+                config.getString("reseau.base-de-donnees.utilisateur"),
+                config.getString("reseau.base-de-donnees.mot-de-passe"),
+                Math.max(250, config.getInt("reseau.base-de-donnees.delai-ms", 3000)));
+            NetworkGames games = new NetworkGames(this, bus, db, config.getString("reseau.canal", "chatgames"));
+            net = games;
+            games.enable();
+            getLogger().info("SHNetwork détecté : un seul jeu du chat pour tout le réseau, victoires en base.");
+        } catch (RuntimeException | LinkageError e) {
+            net = null;
+            if (db != null) db.close();
+            getLogger().log(Level.SEVERE, "SHNetwork présent mais inutilisable, jeux locaux à ce serveur : " + e);
+        }
+    }
+
+    /** Appelé par le meneur quand il est désigné : le planificateur repart d'un délai neuf. */
+    void startScheduler() {
+        stopScheduler();
+        scheduleNext();
+    }
+
+    /** Appelé quand ce serveur n'est plus meneur. */
+    void stopScheduler() {
+        if (scheduleTask != null) {
+            scheduleTask.cancel();
+            scheduleTask = null;
+        }
+    }
+
+    FileConfiguration config() {
+        return config;
     }
 
     private void loadMessages() {
         File file = new File(getDataFolder(), "messages.yml");
         if (!file.exists()) saveResource("messages.yml", false);
         messages = YamlConfiguration.loadConfiguration(file);
+        // Un messages.yml plus ancien n'a pas les textes ajoutés depuis : ils viennent du fichier du jar
+        try (InputStream in = getResource("messages.yml")) {
+            if (in != null) {
+                messages.setDefaults(YamlConfiguration.loadConfiguration(new InputStreamReader(in, StandardCharsets.UTF_8)));
+            }
+        } catch (IOException e) {
+            getLogger().warning("Impossible de lire messages.yml du jar: " + e.getMessage());
+        }
     }
 
     private String message(String key, String def) {
         return ChatColor.translateAlternateColorCodes('&', messages.getString(key, def));
+    }
+
+    /** Texte de messages.yml (ou, à défaut, celui du jar). */
+    private String message(String key) {
+        String raw = messages.getString(key);
+        return ChatColor.translateAlternateColorCodes('&', raw != null ? raw : key);
     }
 
     private void loadWins() {
@@ -141,6 +228,11 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         }
     }
 
+    /** Victoires d'un joueur connecté : celles du réseau (base) avec SHNetwork, wins.yml sinon. */
+    int getWins(Player player) {
+        return net != null ? net.wins(player.getUniqueId()) : getWins(player.getName());
+    }
+
     private void scheduleNext() {
         String intervalStr = config.getString("interval", "300-300").trim();
         int delaySec;
@@ -161,10 +253,24 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
             delaySec = 300;
         }
         delaySec = Math.max(1, delaySec);
-        Bukkit.getScheduler().runTaskLater(this, () -> {
+        scheduleIn(delaySec * 20L);
+    }
+
+    private void scheduleIn(long ticks) {
+        scheduleTask = Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (net != null) {
+                // Plus meneur : le planificateur s'arrête, le nouveau meneur prend la suite
+                if (!net.isLeader()) return;
+                // Le jeu d'un meneur précédent n'est pas fini : on attend sa fin plus la marge, sans entamer un nouvel intervalle
+                long wait = net.waitBeforeStartMs();
+                if (wait > 0) {
+                    scheduleIn(wait / 50L + 1L);
+                    return;
+                }
+            }
             startRandomGame();
             scheduleNext();
-        }, delaySec * 20L);
+        }, ticks);
     }
 
     private void loadWords() {
@@ -183,20 +289,80 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
     }
 
     private void startRandomGame() {
-        if (Bukkit.getOnlinePlayers().size() < config.getInt("min-players", 1)) return;
-        List<String> types = config.getStringList("enabled_games");
-        if (types.isEmpty()) return;
-        String type = types.get(random.nextInt(types.size())).toLowerCase(Locale.ROOT);
+        startGame(null, false);
+    }
+
+    /**
+     * Lance un jeu. {@code forcedType} vient de /shchatgames start (null = tirage au hasard parmi enabled_games) ;
+     * {@code forced} ignore min-players et refuse de remplacer un jeu en cours.
+     */
+    private Start startGame(String forcedType, boolean forced) {
+        // Avec SHNetwork, seul le meneur lance des jeux
+        if (net != null && !net.isLeader()) return Start.NOT_LEADER;
+        if (!forced && playersCount() < config.getInt("min-players", 1)) return Start.TOO_FEW_PLAYERS;
+        if (forced && (net != null ? net.isRunning() : currentGame != null)) return Start.BUSY;
+        String type;
+        if (forcedType != null) {
+            if (!GAME_TYPES.contains(forcedType)) return Start.UNKNOWN_TYPE;
+            type = forcedType;
+        } else {
+            List<String> types = config.getStringList("enabled_games");
+            if (types.isEmpty()) return Start.NO_GAME_ENABLED;
+            type = types.get(random.nextInt(types.size())).toLowerCase(Locale.ROOT);
+        }
+        Puzzle puzzle = makePuzzle(type);
+        if (puzzle == null) return Start.NOT_PLAYABLE;
+        String content = puzzle.content(), answer = puzzle.answer();
+
+        if (net != null) {
+            // Le meneur publie le jeu : tous les serveurs, le sien compris, l'affichent à partir du message
+            return net.start(type, content, answer) ? Start.STARTED : Start.NOT_LEADER;
+        }
+
+        final Game game = new Game(type, content, answer, System.currentTimeMillis());
+        currentGame = game;
+        if (timeoutTask != null) timeoutTask.cancel();
+
+        // On crée une copie finale pour le scheduler
+        // Pour "click", la réponse est un jeton interne : on n'affiche jamais sa valeur.
+        final String finalAnswer = type.equals("click") ? content : answer;
+
+        timeoutTask = Bukkit.getScheduler().runTaskLater(this, () -> {
+            // claimGame : si un joueur vient de gagner, le délai écoulé ne s'annonce pas en plus
+            if (claimGame(game)) {
+                broadcast("games." + type + ".timeout", Map.of(
+                    "%GAME_CONTENT%", content,
+                    "%ANSWER%", finalAnswer
+                ));
+            }
+        }, Math.max(1, config.getInt("game_timeout_seconds", 60)) * 20L);
+
+        if (type.equals("click")) {
+            broadcastClickable("games.click.start", content, answer);
+        } else {
+            broadcast("games." + type + ".start", Map.of("%GAME_CONTENT%", content));
+        }
+        playSound(config.getString("game_start_sound", ""));
+        return Start.STARTED;
+    }
+
+    /** Joueurs comptés pour min-players : tout le réseau avec SHNetwork, ce serveur sinon. */
+    private int playersCount() {
+        return net != null ? net.online() : Bukkit.getOnlinePlayers().size();
+    }
+
+    /** Tire l'énoncé d'un jeu ; null si le jeu est impossible (aucun mot chargé) ou inconnu. */
+    private Puzzle makePuzzle(String type) {
         String content, answer;
 
         switch (type) {
             case "type":
                 answer = content = getRandomWord();
-                if (content.isEmpty()) return; // aucun mot chargé : partie impossible à gagner
+                if (content.isEmpty()) return null; // aucun mot chargé : partie impossible à gagner
                 break;
             case "unreverse":
                 String w = getRandomWord();
-                if (w.isEmpty()) return;
+                if (w.isEmpty()) return null;
                 content = new StringBuilder(w).reverse().toString();
                 answer = w;
                 break;
@@ -248,37 +414,18 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
                 answer = UUID.randomUUID().toString().substring(0, 8);
                 break;
             default:
-                return;
+                return null;
         }
-
-        final Game game = new Game(type, content, answer, System.currentTimeMillis());
-        currentGame = game;
-        if (timeoutTask != null) timeoutTask.cancel();
-
-        // On crée une copie finale pour le scheduler
-        // Pour "click", la réponse est un jeton interne : on n'affiche jamais sa valeur.
-        final String finalAnswer = type.equals("click") ? content : answer;
-
-        timeoutTask = Bukkit.getScheduler().runTaskLater(this, () -> {
-            // claimGame : si un joueur vient de gagner, le délai écoulé ne s'annonce pas en plus
-            if (claimGame(game)) {
-                broadcast("games." + type + ".timeout", Map.of(
-                    "%GAME_CONTENT%", content,
-                    "%ANSWER%", finalAnswer
-                ));
-            }
-        }, Math.max(1, config.getInt("game_timeout_seconds", 60)) * 20L);
-
-        if (type.equals("click")) {
-            broadcastClickable("games.click.start", content, answer);
-        } else {
-            broadcast("games." + type + ".start", Map.of("%GAME_CONTENT%", content));
-        }
-        playSound(config.getString("game_start_sound", ""));
+        return new Puzzle(type, content, answer);
     }
 
     @EventHandler
     public void onChat(AsyncPlayerChatEvent e) {
+        // Avec SHNetwork, la réponse est jugée ici et envoyée au meneur, qui désigne l'unique gagnant du réseau
+        if (net != null) {
+            net.onChat(e.getPlayer(), e.getMessage());
+            return;
+        }
         // On crée une copie locale de l'objet du jeu en cours.
         // C'est crucial car cela "capture" l'état du jeu au moment de l'événement.
         final Game game = this.currentGame;
@@ -325,7 +472,7 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         });
     }
 
-    private void broadcast(String path, Map<String, String> vars) {
+    void broadcast(String path, Map<String, String> vars) {
         for (String line : config.getStringList(path)) {
             String msg = line;
             for (var entry : vars.entrySet()) msg = msg.replace(entry.getKey(), entry.getValue());
@@ -338,7 +485,7 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
      * Le clic exécute /shcgclick <token> ; le token est aléatoire et jamais affiché,
      * donc impossible de gagner en tapant la commande à la main.
      */
-    private void broadcastClickable(String path, String symbol, String token) {
+    void broadcastClickable(String path, String symbol, String token) {
         String coloredSymbol = ChatColor.translateAlternateColorCodes('&', symbol);
         String hover = ChatColor.translateAlternateColorCodes('&',
             config.getString("games.click.hover", "&aCliquez vite !"));
@@ -373,20 +520,29 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
 
     private void handleClick(CommandSender sender, String[] args) {
         if (!(sender instanceof Player p)) return;
+        if (net != null) {
+            // Avec SHNetwork, le clic valable part vers le meneur, qui désigne l'unique gagnant du réseau
+            if (!net.onClick(p, args.length >= 1 ? args[0] : null)) sendTooLate(p);
+            return;
+        }
         final Game game = this.currentGame;
         boolean valid = args.length >= 1 && game != null
             && game.type.equals("click") && game.answer.equals(args[0]);
 
         if (!valid || !claimGame(game)) {
-            for (String line : config.getStringList("games.click.too_late")) {
-                p.sendMessage(ChatColor.translateAlternateColorCodes('&', line));
-            }
+            sendTooLate(p);
             return;
         }
         handleWin(p, game);
     }
 
-    private void playSound(String soundName) {
+    void sendTooLate(Player p) {
+        for (String line : config.getStringList("games.click.too_late")) {
+            p.sendMessage(ChatColor.translateAlternateColorCodes('&', line));
+        }
+    }
+
+    void playSound(String soundName) {
         if (soundName == null || soundName.isBlank()) return;
         Sound sound = sound(soundName);
         if (sound == null) return;
@@ -408,13 +564,21 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         }
     }
 
-    private void runRewards(Player player, String gameType) {
+    /** Tire au hasard un groupe de récompenses ; null s'il n'y en a aucun. */
+    Reward pickReward() {
         var section = config.getConfigurationSection("rewards");
-        if (section == null) return;
+        if (section == null) return null;
         List<String> keys = new ArrayList<>(section.getKeys(false));
-        if (keys.isEmpty()) return;
+        if (keys.isEmpty()) return null;
         String rewardKey = keys.get(random.nextInt(keys.size()));
-        List<String> chosen = config.getStringList("rewards." + rewardKey);
+        return new Reward(rewardKey, config.getStringList("rewards." + rewardKey));
+    }
+
+    private void runRewards(Player player, String gameType) {
+        Reward reward = pickReward();
+        if (reward == null) return;
+        String rewardKey = reward.key();
+        List<String> chosen = reward.commands();
         Bukkit.getScheduler().runTask(this, () -> {
             boolean given = false;
             for (String cmd : chosen) {
@@ -423,14 +587,14 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
                     given = true;
                 }
             }
-            if (given) logWin(player, gameType, rewardKey);
+            if (given) logWin(player.getName(), gameType, rewardKey);
         });
     }
 
     /** Une ligne SHLogs par gagnant, écrite une fois ses commandes de récompense acceptées. */
-    private void logWin(Player player, String gameType, String rewardKey) {
+    void logWin(String player, String gameType, String rewardKey) {
         String line = config.getString("win_log_format", "%PLAYER% -> gagne le jeu du chat « %GAME% » (%REWARD%)")
-            .replace("%PLAYER%", player.getName())
+            .replace("%PLAYER%", player)
             .replace("%GAME%", config.getString("games." + gameType + ".log_name", gameType))
             .replace("%REWARD%", config.getString("reward_log_names." + rewardKey, "récompense " + rewardKey));
         ActionLog.write(this, config.getString("log_file", "gagnants"), line);
@@ -451,6 +615,15 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
                 "&7&l« &c&lSH &8&l» &7Vous n'avez pas la &cpermission&7 d'utiliser cette commande."));
             return true;
         }
+        String sub = a.length > 0 ? a[0].toLowerCase(Locale.ROOT) : "";
+        if (sub.equals("start")) {
+            commandStart(s, a.length > 1 ? a[1].toLowerCase(Locale.ROOT) : null);
+            return true;
+        }
+        if (sub.equals("import")) {
+            commandImport(s);
+            return true;
+        }
         reloadConfig();
         config = getConfig();
         loadMessages();
@@ -458,6 +631,53 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         s.sendMessage(message("reload_success",
             "&7&l« &a&lSH &8&l» &7Configuration &arechargée&7 avec succès !"));
         return true;
+    }
+
+    /** /shchatgames start [jeu] : lance un jeu tout de suite, sans tenir compte de min-players. */
+    private void commandStart(CommandSender s, String type) {
+        Start result = startGame(type, true);
+        switch (result) {
+            case STARTED -> s.sendMessage(message("start_success"));
+            case BUSY -> s.sendMessage(message("start_busy"));
+            case NOT_LEADER -> s.sendMessage(message("start_not_leader"));
+            case UNKNOWN_TYPE -> s.sendMessage(message("start_unknown_type").replace("%TYPES%", String.join(", ", GAME_TYPES)));
+            default -> s.sendMessage(message("start_impossible"));
+        }
+    }
+
+    /** /shchatgames import : reprend les victoires de wins.yml dans la base du réseau. */
+    private void commandImport(CommandSender s) {
+        if (net == null) {
+            s.sendMessage(message("import_unavailable"));
+            return;
+        }
+        Map<String, Integer> snapshot = new LinkedHashMap<>();
+        synchronized (winsLock) {
+            for (String name : winsConfig.getKeys(false)) snapshot.put(name, winsConfig.getInt(name, 0));
+        }
+        net.importWins(snapshot, counts -> {
+            if (counts == null) {
+                s.sendMessage(message("import_error"));
+            } else {
+                s.sendMessage(message("import_success")
+                    .replace("%IMPORTED%", String.valueOf(counts[0]))
+                    .replace("%PRESENT%", String.valueOf(counts[1])));
+            }
+        });
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender s, Command c, String l, String[] a) {
+        if (a.length == 0 || c.getName().equalsIgnoreCase("shcgclick") || !s.hasPermission("shchatgames.reload")) return List.of();
+        List<String> options = new ArrayList<>();
+        if (a.length == 1) {
+            options.addAll(List.of("reload", "start", "import"));
+        } else if (a.length == 2 && a[0].equalsIgnoreCase("start")) {
+            options.addAll(GAME_TYPES);
+        }
+        String typed = a[a.length - 1].toLowerCase(Locale.ROOT);
+        options.removeIf(o -> !o.startsWith(typed));
+        return options;
     }
 
     private static class Game {
@@ -507,7 +727,7 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         @Override
         public String onPlaceholderRequest(Player player, String identifier) {
             if (player == null) return "";
-            if (identifier.equals("wins")) return String.valueOf(plugin.getWins(player.getName()));
+            if (identifier.equals("wins")) return String.valueOf(plugin.getWins(player));
             return null;
         }
     }

@@ -12,3 +12,27 @@ no_permission: "&7&l« &c&lSH &8&l» &7Vous n'avez pas la &cpermission&7 d'utili
 
 # Configuration rechargée avec /shchatgames reload.
 reload_success: "&7&l« &a&lSH &8&l» &7Configuration &arechargée&7 avec succès !"
+
+# /shchatgames start : jeu lancé.
+start_success: "&7&l« &a&lSH &8&l» &7Jeu du chat &alancé&7."
+
+# /shchatgames start : un jeu est déjà en cours.
+start_busy: "&7&l« &6&lSH &8&l» &7Un jeu est &6déjà en cours&7, attendez sa fin."
+
+# /shchatgames start avec SHNetwork : commande tapée sur un serveur qui n'est pas le meneur.
+start_not_leader: "&7&l« &6&lSH &8&l» &7Ce serveur n'est &6pas le meneur&7 du jeu du chat : lancez la commande sur le serveur meneur (&6/shnetwork info&7)."
+
+# /shchatgames start avec un nom de jeu inconnu. %TYPES% = jeux possibles.
+start_unknown_type: "&7&l« &c&lSH &8&l» &7Jeu &cinconnu&7. Jeux possibles : &c%TYPES%&7."
+
+# /shchatgames start : aucun jeu activé, ou jeu sans énoncé possible (liste de mots vide).
+start_impossible: "&7&l« &c&lSH &8&l» &7Impossible de lancer un jeu : &caucun jeu activé&7 ou liste de mots vide."
+
+# /shchatgames import : terminée. %IMPORTED% = joueurs ajoutés à la base, %PRESENT% = joueurs qui y avaient déjà un total.
+import_success: "&7&l« &a&lSH &8&l» &a%IMPORTED%&7 joueurs importés dans la base du réseau (&a%PRESENT%&7 déjà présents)."
+
+# /shchatgames import sans SHNetwork.
+import_unavailable: "&7&l« &6&lSH &8&l» &7L'importation ne sert qu'&6avec SHNetwork&7 : ce serveur compte les victoires dans wins.yml."
+
+# /shchatgames import : base injoignable.
+import_error: "&7&l« &c&lSH &8&l» &7Importation &céchouée&7 : base injoignable, voir la console."

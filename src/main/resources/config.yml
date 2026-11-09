@@ -3,24 +3,32 @@
 # ======================================================================== #
 #
 # Plugin : mini-jeux de chat automatiques (mot à taper, mot à l'envers,
-# calcul, suite, clic) avec récompenses.
+# calcul, suite, clic) avec récompenses. Avec SHNetwork, un seul jeu tourne pour
+# tous les serveurs Opale (voir la section 'reseau' en bas du fichier).
 #
 # Commandes :
-#   /shchatgames reload   Recharge la configuration, les messages et la liste de mots.
-#   /shcgclick <jeton>    Commande interne exécutée par le clic sur la case du jeu « clic ».
+#   /shchatgames reload        Recharge la configuration, les messages et la liste de mots.
+#   /shchatgames start [jeu]   Lance un jeu tout de suite (type, unreverse, solve, sequence, click),
+#                              sans tenir compte de min-players. Avec SHNetwork, seulement sur le serveur meneur.
+#   /shchatgames import        Avec SHNetwork : copie les victoires de wins.yml dans la base du réseau,
+#                              sans toucher aux joueurs qui y ont déjà un total.
+#   /shcgclick <jeton>         Commande interne exécutée par le clic sur la case du jeu « clic ».
 #
 # Permissions :
-#   shchatgames.reload    Recharger le plugin (par défaut : op).
+#   shchatgames.reload    Recharger le plugin, lancer un jeu, importer les victoires (par défaut : op).
 #   shchatgames.play      Participer au jeu du clic (par défaut : tous les joueurs).
+#
+# Placeholder : %shchatgames_wins% = nombre de victoires du joueur (celles de tout le réseau avec SHNetwork).
 #
 # Les messages des commandes sont dans 'messages.yml'.
 #
 # ======================================================================== #
 
 # Délai entre deux jeux, en secondes : une valeur fixe (300) ou une plage (480-700).
+# Avec SHNetwork, seul le serveur meneur le décompte.
 interval: "480-700"
 
-# Nombre minimal de joueurs connectés pour lancer un jeu.
+# Nombre minimal de joueurs connectés pour lancer un jeu (tout le réseau avec SHNetwork).
 min-players: 10
 
 # Jeux tirés au hasard : type, unreverse, solve, sequence, click.
@@ -167,3 +175,27 @@ rewards:
 reward_log_names:
   1: "250 EXP et 3000 SHCoins"
   2: "1 luckyblock Jaune et 3000 SHCoins"
+
+# Jeu unique pour tout le réseau Opale. Demande SHNetwork : sans lui, ou avec actif: false, chaque serveur
+# lance ses propres jeux et compte les victoires dans wins.yml.
+# Un seul serveur, le meneur, tire les jeux et désigne le gagnant ; tous les serveurs affichent la même
+# question en même temps et envoient au meneur les bonnes réponses de leurs joueurs. La récompense est donnée
+# une seule fois, sur le serveur où se trouve le gagnant.
+# Demande un redémarrage : actif, canal, base-de-donnees. Se recharge avec /shchatgames reload : le reste.
+reseau:
+  actif: true
+  # Canal du bus SHNetwork : le meneur y annonce début, victoire et fin ; les réponses des joueurs
+  # partent vers le meneur sur <canal>.reponse
+  canal: chatgames
+  # Temps d'attente, en secondes, après la fin du dernier jeu avant qu'un nouveau meneur en lance un
+  marge-reprise-secondes: 5
+  # Durée pendant laquelle le nombre de victoires d'un joueur lu en base est gardé en mémoire, en secondes
+  cache-victoires-secondes: 30
+  # Base partagée par tous les serveurs : victoires dans la table chatgames_wins (uuid, name, wins)
+  base-de-donnees:
+    url: "jdbc:mariadb://127.0.0.1:3306/bo_net"
+    utilisateur: shchatgames
+    mot-de-passe: CHANGE_ME
+    # Délai maximal de connexion et de réponse de la base, en millisecondes. Une base qui ne répond pas
+    # retarde l'annonce du gagnant d'autant, mais jamais sa récompense.
+    delai-ms: 3000
