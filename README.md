@@ -67,16 +67,21 @@ Au démarrage, la console indique `SHNetwork détecté : un seul jeu du chat pou
 
 | Commande | Alias | Description | Permission |
 |---|---|---|---|
-| `/shchatgames reload` | — | Recharge la configuration, les messages et la liste de mots. | `shchatgames.reload` |
-| `/shchatgames start [jeu]` | — | Lance un jeu tout de suite (`type`, `unreverse`, `solve`, `sequence`, `click`). Avec SHNetwork, seulement sur le serveur meneur. | `shchatgames.reload` |
-| `/shchatgames import` | — | Avec SHNetwork : reprend les victoires de `wins.yml` dans la base du réseau. | `shchatgames.reload` |
+| `/shchatgames reload` | — | Relit la configuration, les messages et la liste de mots ; relance le planificateur avec le nouvel `interval`. Si `config.yml` ou `messages.yml` est invalide, rien n'est remplacé. | `shchatgames.admin.reload` |
+| `/shchatgames start [jeu]` | — | Lance un jeu tout de suite (`type`, `unreverse`, `solve`, `sequence`, `click`). Avec SHNetwork, seulement sur le serveur meneur. | `shchatgames.admin.start` |
+| `/shchatgames import` | — | Avec SHNetwork : reprend les victoires de `wins.yml` dans la base du réseau. | `shchatgames.admin.import` |
+| `/shchatgames status` | — | Mode, jeu en cours, prochain lancement et joueurs comptés contre `min-players`. | `shchatgames.admin.status` |
 | `/shcgclick` | — | Commande interne déclenchée par le clic sur la case. | `shchatgames.play` |
 
 ## Permissions
 
 | Permission | Description | Par défaut |
 |---|---|---|
-| `shchatgames.reload` | Permet de recharger SHChatGames, de lancer un jeu et d'importer les victoires. | `op` |
+| `shchatgames.admin` | Toutes les sous-commandes de `/shchatgames`. | `op` |
+| `shchatgames.admin.reload` | `/shchatgames reload`. | `op` |
+| `shchatgames.admin.start` | `/shchatgames start`. | `op` |
+| `shchatgames.admin.import` | `/shchatgames import`. | `op` |
+| `shchatgames.admin.status` | `/shchatgames status`. | `op` |
 | `shchatgames.play` | Permet de participer au mini-jeu du clic. | `true` |
 
 ## Configuration

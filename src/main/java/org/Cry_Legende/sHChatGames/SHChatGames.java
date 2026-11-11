@@ -18,6 +18,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabExecutor;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -47,6 +48,8 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
     private volatile Game currentGame = null;
     private BukkitTask timeoutTask;
     private BukkitTask scheduleTask;
+    // Heure (ms) du prochain lancement prévu par ce serveur, 0 s'il n'en planifie pas
+    private volatile long nextGameAt;
     // Non nul seulement avec SHNetwork : un seul jeu pour tout le réseau, victoires en base
     private NetworkGames net;
 
@@ -139,6 +142,7 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
             scheduleTask.cancel();
             scheduleTask = null;
         }
+        nextGameAt = 0L;
     }
 
     FileConfiguration config() {
@@ -257,6 +261,7 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
     }
 
     private void scheduleIn(long ticks) {
+        nextGameAt = System.currentTimeMillis() + ticks * 50L;
         scheduleTask = Bukkit.getScheduler().runTaskLater(this, () -> {
             if (net != null) {
                 // Plus meneur : le planificateur s'arrête, le nouveau meneur prend la suite
@@ -604,33 +609,117 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
         return words.isEmpty() ? "" : words.get(random.nextInt(words.size()));
     }
 
+    private static final List<String> ADMIN_SUBCOMMANDS = List.of("reload", "start", "import", "status");
+
+    /** Permission de chaque sous-commande d'admin. */
+    private static String permission(String sub) {
+        return "shchatgames.admin." + sub;
+    }
+
+    /** Sous-commandes que l'expéditeur a le droit d'utiliser. */
+    private List<String> usableSubcommands(CommandSender s) {
+        List<String> usable = new ArrayList<>();
+        for (String sub : ADMIN_SUBCOMMANDS) {
+            if (s.hasPermission(permission(sub))) usable.add(sub);
+        }
+        return usable;
+    }
+
     @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
         if (c.getName().equalsIgnoreCase("shcgclick")) {
             handleClick(s, a);
             return true;
         }
-        if (!s.hasPermission("shchatgames.reload")) {
+        List<String> usable = usableSubcommands(s);
+        if (usable.isEmpty()) {
             s.sendMessage(message("no_permission",
                 "&7&l« &c&lSH &8&l» &7Vous n'avez pas la &cpermission&7 d'utiliser cette commande."));
             return true;
         }
         String sub = a.length > 0 ? a[0].toLowerCase(Locale.ROOT) : "";
-        if (sub.equals("start")) {
-            commandStart(s, a.length > 1 ? a[1].toLowerCase(Locale.ROOT) : null);
+        if (!usable.contains(sub)) {
+            s.sendMessage(message("usage").replace("%SUBCOMMANDS%", String.join("|", usable)));
             return true;
         }
-        if (sub.equals("import")) {
-            commandImport(s);
-            return true;
+        switch (sub) {
+            case "start" -> commandStart(s, a.length > 1 ? a[1].toLowerCase(Locale.ROOT) : null);
+            case "import" -> commandImport(s);
+            case "status" -> commandStatus(s);
+            default -> commandReload(s);
+        }
+        return true;
+    }
+
+    /** Fichier invalide et cause, ou null si config.yml, messages.yml et la liste de mots existent et se lisent. */
+    private String checkFiles() {
+        for (String name : new String[] {"config.yml", "messages.yml"}) {
+            File file = new File(getDataFolder(), name);
+            if (!file.exists()) continue;
+            try {
+                new YamlConfiguration().load(file);
+            } catch (IOException | InvalidConfigurationException e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                String text = String.valueOf(cause.getMessage()).replaceAll("\\s+", " ").trim();
+                return name + "|" + (text.length() > 200 ? text.substring(0, 200) + "..." : text);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * /shchatgames reload : config.yml et messages.yml sont d'abord lus en mode strict. Si l'un est invalide, rien
+     * n'est remplacé. Le planificateur repart avec le nouvel intervalle ; la liste de mots est relue.
+     */
+    private void commandReload(CommandSender s) {
+        String error = checkFiles();
+        if (error != null) {
+            String[] parts = error.split("\\|", 2);
+            getLogger().warning("Rechargement refusé, configuration précédente gardée (" + parts[0] + " : " + parts[1] + ").");
+            s.sendMessage(message("reload_error").replace("%FILE%", parts[0]).replace("%ERROR%", parts[1]));
+            return;
         }
         reloadConfig();
         config = getConfig();
         loadMessages();
         loadWords();
+        // Avec SHNetwork, seul le meneur planifie : le planificateur repart quand ce serveur est désigné
+        if (net == null || net.isLeader()) {
+            startScheduler();
+        }
         s.sendMessage(message("reload_success",
             "&7&l« &a&lSH &8&l» &7Configuration &arechargée&7 avec succès !"));
-        return true;
+    }
+
+    /** /shchatgames status : jeu en cours, prochain lancement, joueurs comptés contre min-players. */
+    private void commandStatus(CommandSender s) {
+        int minPlayers = config.getInt("min-players", 1);
+        String mode;
+        String game;
+        int players;
+        if (net != null) {
+            mode = message(net.isLeader() ? "status_mode_leader" : "status_mode_follower");
+            String type = net.shownType();
+            game = type == null ? message("status_no_game")
+                : message("status_game").replace("%TYPE%", type)
+                    .replace("%SECONDS%", String.valueOf((net.shownRemainingMs() + 999L) / 1000L));
+            players = net.online();
+        } else {
+            mode = message("status_mode_local");
+            Game current = currentGame;
+            long left = current == null ? 0L : Math.max(0L,
+                current.startTime + Math.max(1, config.getInt("game_timeout_seconds", 60)) * 1000L - System.currentTimeMillis());
+            game = current == null ? message("status_no_game")
+                : message("status_game").replace("%TYPE%", current.type)
+                    .replace("%SECONDS%", String.valueOf((left + 999L) / 1000L));
+            players = Bukkit.getOnlinePlayers().size();
+        }
+        long wait = nextGameAt - System.currentTimeMillis();
+        String next = nextGameAt == 0L ? message("status_no_schedule")
+            : message("status_next").replace("%SECONDS%", String.valueOf(Math.max(0L, (wait + 999L) / 1000L)));
+        s.sendMessage(message("status_line1").replace("%MODE%", mode).replace("%GAME%", game));
+        s.sendMessage(message("status_line2").replace("%NEXT%", next)
+            .replace("%PLAYERS%", String.valueOf(players)).replace("%MIN%", String.valueOf(minPlayers)));
     }
 
     /** /shchatgames start [jeu] : lance un jeu tout de suite, sans tenir compte de min-players. */
@@ -668,11 +757,11 @@ public class SHChatGames extends JavaPlugin implements Listener, TabExecutor {
 
     @Override
     public List<String> onTabComplete(CommandSender s, Command c, String l, String[] a) {
-        if (a.length == 0 || c.getName().equalsIgnoreCase("shcgclick") || !s.hasPermission("shchatgames.reload")) return List.of();
+        if (a.length == 0 || c.getName().equalsIgnoreCase("shcgclick")) return List.of();
         List<String> options = new ArrayList<>();
         if (a.length == 1) {
-            options.addAll(List.of("reload", "start", "import"));
-        } else if (a.length == 2 && a[0].equalsIgnoreCase("start")) {
+            options.addAll(usableSubcommands(s));
+        } else if (a.length == 2 && a[0].equalsIgnoreCase("start") && s.hasPermission(permission("start"))) {
             options.addAll(GAME_TYPES);
         }
         String typed = a[a.length - 1].toLowerCase(Locale.ROOT);

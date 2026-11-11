@@ -7,16 +7,25 @@
 # tous les serveurs Opale (voir la section 'reseau' en bas du fichier).
 #
 # Commandes :
-#   /shchatgames reload        Recharge la configuration, les messages et la liste de mots.
+#   /shchatgames reload        Relit config.yml, messages.yml et la liste de mots, et relance le planificateur avec
+#                              le nouvel 'interval'. Si config.yml ou messages.yml est invalide, rien n'est remplacé
+#                              et le message donne le fichier et l'erreur. Demandent un redémarrage : reseau.actif,
+#                              reseau.canal, reseau.base-de-donnees.
 #   /shchatgames start [jeu]   Lance un jeu tout de suite (type, unreverse, solve, sequence, click),
 #                              sans tenir compte de min-players. Avec SHNetwork, seulement sur le serveur meneur.
 #   /shchatgames import        Avec SHNetwork : copie les victoires de wins.yml dans la base du réseau,
 #                              sans toucher aux joueurs qui y ont déjà un total.
+#   /shchatgames status        Mode, jeu en cours, prochain lancement et joueurs comptés contre min-players.
 #   /shcgclick <jeton>         Commande interne exécutée par le clic sur la case du jeu « clic ».
+#   Sans argument, /shchatgames affiche la liste des sous-commandes permises.
 #
 # Permissions :
-#   shchatgames.reload    Recharger le plugin, lancer un jeu, importer les victoires (par défaut : op).
-#   shchatgames.play      Participer au jeu du clic (par défaut : tous les joueurs).
+#   shchatgames.admin          Toutes les sous-commandes de /shchatgames (par défaut : op).
+#   shchatgames.admin.reload   /shchatgames reload
+#   shchatgames.admin.start    /shchatgames start
+#   shchatgames.admin.import   /shchatgames import
+#   shchatgames.admin.status   /shchatgames status
+#   shchatgames.play           Participer au jeu du clic (par défaut : tous les joueurs).
 #
 # Placeholder : %shchatgames_wins% = nombre de victoires du joueur (celles de tout le réseau avec SHNetwork).
 #

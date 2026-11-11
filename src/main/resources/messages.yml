@@ -36,3 +36,21 @@ import_unavailable: "&7&l« &6&lSH &8&l» &7L'importation ne sert qu'&6avec SHNe
 
 # /shchatgames import : base injoignable.
 import_error: "&7&l« &c&lSH &8&l» &7Importation &céchouée&7 : base injoignable, voir la console."
+
+# /shchatgames sans argument ou avec une sous-commande inconnue. %SUBCOMMANDS% : sous-commandes permises à l'expéditeur.
+usage: "&7&l« &c&lSH &8&l» &7Utilisation : &c/shchatgames <%SUBCOMMANDS%>"
+
+# /shchatgames reload refusé : %FILE% = fichier invalide, %ERROR% = cause. La configuration précédente reste en place.
+reload_error: "&7&l« &c&lSH &8&l» &7Rechargement &crefusé&7 (%FILE% : %ERROR%). La configuration précédente reste en place."
+
+# /shchatgames status. %MODE% : mode, %GAME% : jeu en cours, %NEXT% : prochain lancement,
+# %PLAYERS% : joueurs comptés, %MIN% : min-players, %TYPE% : type du jeu, %SECONDS% : secondes.
+status_line1: "&7&l« &6&lSH &8&l» &7Mode : &6%MODE%&7. Jeu en cours : &6%GAME%&7."
+status_line2: "&7&l« &6&lSH &8&l» &7Prochain lancement : &6%NEXT%&7. Joueurs : &6%PLAYERS%&7 (minimum &6%MIN%&7)."
+status_mode_local: "local à ce serveur"
+status_mode_leader: "réseau, ce serveur est le meneur"
+status_mode_follower: "réseau, ce serveur n'est pas le meneur"
+status_no_game: "aucun"
+status_game: "%TYPE% (encore %SECONDS% s)"
+status_next: "dans %SECONDS% s"
+status_no_schedule: "non planifié ici"

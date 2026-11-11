@@ -180,6 +180,18 @@ final class NetworkGames implements Listener {
         return referee.isOpen();
     }
 
+    /** Type du jeu affiché sur ce serveur, ou null s'il n'y en a pas (lecture seule, pour /shchatgames status). */
+    String shownType() {
+        NetGame game = shown;
+        return game == null ? null : game.type;
+    }
+
+    /** Millisecondes avant la fin du jeu affiché sur ce serveur, 0 s'il n'y en a pas. */
+    long shownRemainingMs() {
+        NetGame game = shown;
+        return game == null ? 0L : Math.max(0L, game.endsAt - System.currentTimeMillis());
+    }
+
     /** Publie un nouveau jeu pour tout le réseau. Faux si ce serveur n'est pas (ou plus) le meneur. */
     boolean start(String type, String content, String answer) {
         if (!isLeader()) {

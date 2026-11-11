@@ -17,17 +17,34 @@ libraries:
 
 commands:
   shchatgames:
-    description: Commande principale pour SHChatGames.
-    permission: shchatgames.reload
-    usage: /shchatgames <reload|start [jeu]|import>
+    description: Administration de SHChatGames.
+    permission: shchatgames.admin.reload;shchatgames.admin.start;shchatgames.admin.import;shchatgames.admin.status
+    usage: /shchatgames <reload|start [jeu]|import|status>
   shcgclick:
     description: Commande interne declenchee par le clic sur la case.
     permission: shchatgames.play
     usage: /shcgclick <token>
 
 permissions:
-  shchatgames.reload:
-    description: Permet de recharger SHChatGames, de lancer un jeu et d'importer les victoires.
+  shchatgames.admin:
+    description: Toutes les sous-commandes de /shchatgames.
+    default: op
+    children:
+      shchatgames.admin.reload: true
+      shchatgames.admin.start: true
+      shchatgames.admin.import: true
+      shchatgames.admin.status: true
+  shchatgames.admin.reload:
+    description: Recharger la configuration, les messages et la liste de mots avec /shchatgames reload.
+    default: op
+  shchatgames.admin.start:
+    description: Lancer un jeu tout de suite avec /shchatgames start.
+    default: op
+  shchatgames.admin.import:
+    description: Reprendre les victoires de wins.yml dans la base du réseau avec /shchatgames import.
+    default: op
+  shchatgames.admin.status:
+    description: Voir l'état des jeux du chat avec /shchatgames status.
     default: op
   shchatgames.play:
     description: Permet de participer au mini-jeu du clic.
