@@ -173,17 +173,17 @@ games:
 rewards:
   1:
     - "minecraft:xp add %player% 250"
-    - "eco give %player% 3000"
-    - "sm %player% &7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l» &fVous avez gagné &a250 EXP &fet &a3000 SHCoins"
+    - "give %player% diamond 3"
+    - "msg %player% Vous avez gagné 250 EXP et 3 diamants"
   2:
-    - "shwc %player% ntdluckyblock give %player% YELLOW 1"
-    - "eco give %player% 3000"
-    - "sm %player% &7&l« &c&lM&6&li&e&ln&l&li &b&lj&d&le&6&lu &8&l» &fVous avez gagné &a1 luckyblock Jaune &fet &a3000 SHCoins"
+    - "give %player% golden_apple 1"
+    - "give %player% diamond 3"
+    - "msg %player% Vous avez gagné 1 pomme dorée et 3 diamants"
 
 # Texte de chaque groupe de récompenses dans SHLogs (même numéro que ci-dessus).
 reward_log_names:
-  1: "250 EXP et 3000 SHCoins"
-  2: "1 luckyblock Jaune et 3000 SHCoins"
+  1: "250 EXP et 3 diamants"
+  2: "1 pomme dorée et 3 diamants"
 
 # Jeu unique pour tout le réseau Opale. Demande SHNetwork : sans lui, ou avec actif: false, chaque serveur
 # lance ses propres jeux et compte les victoires dans wins.yml.
@@ -202,7 +202,7 @@ reseau:
   cache-victoires-secondes: 30
   # Base partagée par tous les serveurs : victoires dans la table chatgames_wins (uuid, name, wins)
   base-de-donnees:
-    url: "jdbc:mariadb://127.0.0.1:3306/bo_net"
+    url: "jdbc:mariadb://127.0.0.1:3306/minecraft"
     utilisateur: shchatgames
     mot-de-passe: CHANGE_ME
     # Délai maximal de connexion et de réponse de la base, en millisecondes. Une base qui ne répond pas
